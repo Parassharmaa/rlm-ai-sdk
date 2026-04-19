@@ -28,11 +28,29 @@ N=3 samples per length, synthetic lorem-ipsum filler with one `"The magic number
 
 Dataset: [zai-org/LongBench-v2](https://huggingface.co/datasets/zai-org/LongBench-v2). 10 items from `Code Repository Understanding` ≤128K tokens. 4-way multiple choice.
 
-Results pending fresh re-run (in progress). Prior run (April 16, partial JSONL):
-- Baseline: ~60% · ~$1.12
-- RLM:       ~70% · ~$0.28
+| Run | Baseline | RLM | Base $ | RLM $ |
+|---|---|---|---|---|
+| April 16 | 60% (6/10) | **70%** (7/10) | $1.12 | $0.28 |
+| April 19 | **70%** (7/10) | 60% (6/10) | $1.15 | $0.25 |
 
-See `bench/results/codeqa.log` for the full April 16 trace.
+**Two runs, opposite direction of accuracy delta.** N=10 is noisy — one flipped item is 10 pp. The two runs disagree on exactly which 6 items each condition got right (both agree: easy items pass everywhere, hardest items fail everywhere; 2-3 items flip depending on reasoning-token sampling variance from GPT-5). **The cost story is stable: RLM is ~4× cheaper** across both runs because the root LM never pulls the whole file into its prompt.
+
+Comparable paper result: baseline 24% → RLM 62% for GPT-5 on full CodeQA (23K–4.2M tokens). Our subset caps at 128K so GPT-5 baseline doesn't overflow, which kills most of the paper's gap.
+
+Per-item from the April 19 run (latest):
+
+| Item | Tokens | Base | RLM |
+|---|---|---|---|
+| 66ebd3ba | 113K | ❌ | ❌ |
+| 66ec3644 | 99K  | ✅ | ❌ |
+| 66ecf139 | 49K  | ✅ | ❌ |
+| 66ed3e90 | 70K  | ✅ | ✅ |
+| 66f39ac5 | 86K  | ❌ | ✅ |
+| 66f3ad93 | 25K  | ✅ | ✅ |
+| 66f3c219 | 121K | ✅ | ✅ |
+| 66f3cb88 | 92K  | ✅ | ✅ |
+| 66f530ce | 48K  | ✅ | ✅ |
+| 66fa50ac | 82K  | ❌ | ❌ |
 
 ## 3. OOLONG counting @ 32K (N=10)
 

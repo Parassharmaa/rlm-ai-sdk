@@ -157,7 +157,7 @@ Benchmarked with the same models as the [RLM paper](https://arxiv.org/abs/2512.2
 | Benchmark | Context | Baseline | RLM (bash only) | RLM + sub-calls | Cost |
 |---|---|---|---|---|---|
 | S-NIAH | 8K–256K | 100% | 100% | — | RLM **93× cheaper** @256K |
-| LongBench-v2 CodeQA (N=10) | 25K–121K | ~60% | ~70% | — | RLM ~4× cheaper |
+| LongBench-v2 CodeQA (N=10) | 25K–121K | 60–70% | 60–70% | — | RLM ~4× cheaper (stable) |
 | OOLONG counting @ 32K (N=10) | 24K | 60% | **90%** | 70% | RLM no-sub **3× cheaper** |
 
 **Honest finding on OOLONG:** bash-only RLM beats baseline by 30 pp. Adding sub-calls *hurt* on this simple aggregation task — the root LM over-delegates and loses coherence. Sub-calls should help on quadratic tasks (paper's OOLONG-Pairs: +14 pp) but aren't a free win. Default `maxDepth=0` reflects this.
