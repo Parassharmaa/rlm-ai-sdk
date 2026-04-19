@@ -83,6 +83,10 @@ export type RLMEvent =
       depth: number;
     }
   | { type: "final"; answer: string; depth: number }
+  /** Non-fatal protocol glitch (e.g. root LM emitted trailing text without
+   *  calling `final()` — we still produced an answer via fallback). */
+  | { type: "warning"; message: string; depth: number }
+  /** Fatal error in an invocation — thrown up to the caller. */
   | { type: "error"; error: string; depth: number };
 
 /** Result of a single RLM invocation. */

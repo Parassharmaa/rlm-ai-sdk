@@ -85,6 +85,8 @@ export function makeEventPrinter(): (e: RLMEvent) => void {
       console.log(
         `${c.dim(`[${step}]`)} ${c.bold(c.green("final"))} → "${e.answer.slice(0, 80)}"`,
       );
+    } else if (e.type === "warning") {
+      console.log(`${c.dim(`[${step}]`)} ${c.yellow("warn")}  ${e.message}`);
     } else if (e.type === "error") {
       console.log(`${c.dim(`[${step}]`)} ${c.red("error")} ${e.error}`);
     }

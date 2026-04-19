@@ -187,8 +187,17 @@ describe("runRLM (scripted model)", () => {
       { query: "q", context: "c" },
     );
     expect(result.answer).toContain("7");
+    // Non-fatal fallback emits a `warning` plus a synthetic `final` — not an `error`.
+    const warnEvent = result.trace.find((e) => e.type === "warning");
+    expect(warnEvent).toBeDefined();
+    if (warnEvent?.type === "warning") {
+      expect(warnEvent.message).toContain("final()");
+    }
+    const finalEvent = result.trace.find((e) => e.type === "final");
+    expect(finalEvent).toBeDefined();
+    // Should NOT have any "error" events on this happy fallback path.
     const errorEvent = result.trace.find((e) => e.type === "error");
-    expect(errorEvent).toBeDefined();
+    expect(errorEvent).toBeUndefined();
   });
 
   it("emits events through onEvent callback", async () => {

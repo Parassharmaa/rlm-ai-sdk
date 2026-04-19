@@ -272,10 +272,13 @@ async function runRecursive(
     if (finalAnswer === null) {
       finalAnswer = result.text?.trim() || "(no answer produced)";
       shared.emit({
-        type: "error",
-        error: `RLM@depth${depth} exited without final() — used trailing text as fallback.`,
+        type: "warning",
+        message: `RLM@depth${depth} exited without calling final() — used trailing text as the answer.`,
         depth,
       });
+      // Emit a final event too so consumers that watch only `final` still see
+      // a terminating event on the happy path.
+      shared.emit({ type: "final", answer: finalAnswer, depth });
     }
     return finalAnswer;
   } catch (err) {
