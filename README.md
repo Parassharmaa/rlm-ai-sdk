@@ -157,7 +157,7 @@ Benchmarked with the same models as the [RLM paper](https://arxiv.org/abs/2512.2
 | Benchmark | Context | Baseline | RLM (bash only) | RLM + sub-calls | Cost |
 |---|---|---|---|---|---|
 | S-NIAH | 8K–256K | 100% | 100% | — | RLM **93× cheaper** @256K |
-| LongBench-v2 CodeQA (N=10) | 25K–121K | 60–70% | 60–70% | — | RLM ~4× cheaper (stable) |
+| LongBench-v2 CodeQA (pooled N=35) | 25K–121K | 62.9% | 62.9% | — | RLM **4× cheaper** (stable) |
 | OOLONG counting @ 32K (N=10) | 24K | 60% | **90%** | 80%† | RLM no-sub **3× cheaper** |
 
 <sup>† With tuned root prompt that biases against over-delegation. Untuned: 70%.</sup>

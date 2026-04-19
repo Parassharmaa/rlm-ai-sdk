@@ -15,7 +15,7 @@ import {
   type RunRecord,
 } from "./runner.js";
 
-const N_ITEMS = 10;
+const N_ITEMS = 15; // max items available at ≤128K tokens in Code Repo UQ subset
 const MAX_TOKENS = 128_000;
 
 const cfg: RunConfig = {

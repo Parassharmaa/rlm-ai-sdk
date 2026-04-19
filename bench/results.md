@@ -26,24 +26,29 @@ N=3 samples per length, synthetic lorem-ipsum filler with one `"The magic number
 
 ## 2. LongBench-v2 CodeQA
 
-Dataset: [zai-org/LongBench-v2](https://huggingface.co/datasets/zai-org/LongBench-v2). 10 items from `Code Repository Understanding` ≤128K tokens. 4-way multiple choice.
+Dataset: [zai-org/LongBench-v2](https://huggingface.co/datasets/zai-org/LongBench-v2). Items from `Code Repository Understanding` ≤128K tokens. 4-way multiple choice.
 
-| Run | Baseline | RLM | Base $ | RLM $ |
-|---|---|---|---|---|
-| April 16 | 60% (6/10) | **70%** (7/10) | $1.12 | $0.28 |
-| April 19 | **70%** (7/10) | 60% (6/10) | $1.15 | $0.25 |
+Three runs across two prompt versions:
 
-**Two runs, opposite direction of accuracy delta.** N=10 is noisy — one flipped item is 10 pp. The two runs disagree on exactly which 6 items each condition got right (both agree: easy items pass everywhere, hardest items fail everywhere; 2-3 items flip depending on reasoning-token sampling variance from GPT-5). **The cost story is stable: RLM is ~4× cheaper** across both runs because the root LM never pulls the whole file into its prompt.
+| Run | N | Baseline | RLM | Base $ | RLM $ |
+|---|---|---|---|---|---|
+| Apr 16 (v1 prompt) | 10 | 60% (6/10) | **70%** (7/10) | $1.12 | $0.28 |
+| Apr 19 #1 (v1 prompt) | 10 | **70%** (7/10) | 60% (6/10) | $1.15 | $0.25 |
+| Apr 19 #2 (**v2 tuned prompt**) | 15 | 60% (9/15) | 60% (9/15) | $1.56 | $0.42 |
 
-Comparable paper result: baseline 24% → RLM 62% for GPT-5 on full CodeQA (23K–4.2M tokens). Our subset caps at 128K so GPT-5 baseline doesn't overflow, which kills most of the paper's gap.
+**Pooled across all three runs (N=35):** baseline 22/35 = **62.9%**, RLM 22/35 = **62.9%**. Exactly tied within 3 runs.
 
-Per-item from the April 19 run (latest):
+**Takeaway.** On this CodeQA subset (capped at ≤128K so baseline never overflows), accuracy is statistically indistinguishable between baseline and RLM. The honest conclusion: **RLM doesn't help accuracy on tasks that fit in GPT-5's context window and don't require aggregation.** Where RLM does win: **cost** (stable ~4× cheaper across all three runs) because the root LM only sees metadata and small grep outputs, never the full file.
+
+Paper reports 24% → 62% (+38 pp) for baseline → RLM on full CodeQA (23K–4.2M tokens). Their gap comes overwhelmingly from items where baseline hits context overflow — we can't reproduce that with a 128K cap.
+
+Per-item from the N=15 run (v2 prompt):
 
 | Item | Tokens | Base | RLM |
 |---|---|---|---|
 | 66ebd3ba | 113K | ❌ | ❌ |
-| 66ec3644 | 99K  | ✅ | ❌ |
-| 66ecf139 | 49K  | ✅ | ❌ |
+| 66ec3644 | 99K  | ❌ | ✅ |
+| 66ecf139 | 49K  | ❌ | ❌ |
 | 66ed3e90 | 70K  | ✅ | ✅ |
 | 66f39ac5 | 86K  | ❌ | ✅ |
 | 66f3ad93 | 25K  | ✅ | ✅ |
@@ -51,6 +56,11 @@ Per-item from the April 19 run (latest):
 | 66f3cb88 | 92K  | ✅ | ✅ |
 | 66f530ce | 48K  | ✅ | ✅ |
 | 66fa50ac | 82K  | ❌ | ❌ |
+| 66fa700b | 106K | ❌ | ❌ |
+| 66fa7c81 | 75K  | ✅ | ❌ |
+| 66fcf36f | 74K  | ✅ | ✅ |
+| 66fcfb5f | 33K  | ✅ | ❌ |
+| 6708a096 | 27K  | ✅ | ✅ |
 
 ## 3. OOLONG counting @ 32K (N=10)
 
