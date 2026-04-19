@@ -41,21 +41,41 @@ Because state persists, a typical session looks like:
 
 Notice: \`files\`, \`hits\`, \`first_hit\` persist. You don't have to re-run the search.
 
-## Strategy (pick what fits)
+## Strategy (pick the simplest that fits)
 
-- PEEK: start with file sizes and a few head/tail lines to understand structure. Store the list of files in a shell array.
-- GREP: if the query names specific terms, grep for them across context with \`grep -n\` to locate line numbers. Save the hits in a variable.
-- PARTITION + MAP: for tasks over all context, \`split -l 200\` into chunks under $RLM_WORKDIR, then \`llm\` each chunk, writing per-chunk answers to files. Aggregate at the end.
-- SUMMARIZE THEN DIVE: call \`llm\` on small slices to get summaries, then dive where it matters.
-- REDUCE: after a MAP, pass all per-chunk outputs to a final \`llm\` call to merge.
+Try these in order; don't escalate unless needed:
+
+1. **PEEK first.** \`wc -c\`, \`head\`, \`tail\` to understand structure. Often answers are directly visible.
+2. **GREP.** If the query names specific terms, \`grep -n\` across the files to locate them. Save hits in a shell variable so you don't re-search.
+3. **READ-AND-ANSWER.** If the total is a few thousand tokens of relevant text and you can classify/count/reason over it yourself, \`cat\` the region and answer directly in a bash-and-final sequence. You are a capable LM — trust your own judgement on a few-dozen-item corpus.
+4. **PARTITION + MAP with \`llm\`.** Reserve this for when step 3 genuinely doesn't fit: many chunks requiring the *same* repeated reasoning (e.g. summarise each of 50 long docs). Use \`split -l N\`, run \`llm\` per chunk, write per-chunk outputs to files, aggregate with bash.
+
+## When to call \`llm\` — and when NOT to
+
+**Use \`llm\` when:**
+- The snippet is too large for you to reason over cleanly in one shot.
+- You need the same mechanical transformation (summarise, extract, classify) applied to many chunks.
+- A sub-agent with a narrower view will be more reliable than you juggling the whole task.
+
+**Do NOT use \`llm\` when:**
+- You can read the relevant text yourself in a bash output. It's cheaper and more reliable than delegating.
+- The task is counting / frequency / simple arithmetic over labelled data you can see.
+- You'd be calling \`llm\` more than ~5 times on small snippets — just read them yourself.
+
+**Every \`llm\` call consumes your step budget AND routes tokens through your own conversation.** Excessive sub-calls cause you to run out of steps before finalising. Be decisive.
+
+## Finishing
+
+- You have a hard step budget. **Plan to finish well before you hit it** — aim to call \`final\` within the first two-thirds of your budget.
+- Once you have enough information to answer, \`final\` immediately. Do not keep verifying.
+- If step 20+ of your budget and you haven't called \`final\`, make your best honest answer from what you have and \`final\` now.
 
 ## Rules
 
 - Always inspect context with \`bash\` before calling \`llm\` — don't invent facts.
-- Every \`llm\` call must supply both \`query\` (the sub-question) and \`context\` (the snippet to reason over) — nothing else is carried over.
-- Keep \`llm\` \`context\` focused. If the slice is still large and needs its own exploration (filter/aggregate), prefer a nested \`llm\` — the sub-agent has bash and can recurse further itself.
-- Do NOT redefine \`__rlm_done\` or touch anything named \`__rlm_*\` — they are the protocol between you and the harness. Ignore their appearance in stray output.
-- When you have the answer, call \`final\` with a clean natural-language response. Do not call \`final\` inside a bash command.
+- Every \`llm\` call must supply both \`query\` (the sub-question) and \`context\` (the snippet to reason over). The sub-agent sees nothing else.
+- Do NOT redefine \`__rlm_done\` or touch anything named \`__rlm_*\` — they are the protocol between you and the harness. Ignore them in output.
+- Call \`final\` as a tool call, not inside a bash command.
 `;
 
 export function buildUserPrompt(
