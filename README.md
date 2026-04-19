@@ -160,10 +160,15 @@ Benchmarked with the same models as the [RLM paper](https://arxiv.org/abs/2512.2
 | LongBench-v2 CodeQA (pooled N=35) | 25K–121K | 62.9% | 62.9% | — | RLM **4× cheaper** (stable) |
 | OOLONG counting @ 32K (N=10) | 24K | 60% | **90%** | 80%† | RLM no-sub **3× cheaper** |
 | OOLONG counting @ 131K (N=6) | 96K | 67% | 67% | — | RLM **4.6× cheaper** |
+| Synthetic pairs @ 45K (N=10) | 45K | 100% | 90–100% | 100% | RLM **14× cheaper** |
+| Synthetic pairs V3 NLP @ 8K (N=6) | 8.5K | **100%** | 67% | 67% | RLM ~2× cheaper |
 
 <sup>† With tuned root prompt. Untuned: 70%. RLM's 30 pp advantage at 32K collapses to a tie at 131K — gpt-5 handles long contexts better than the paper assumed.</sup>
 
-**Honest finding on OOLONG:** bash-only RLM beats baseline by 30 pp. Adding sub-calls *hurt* on this simple aggregation task — the root LM over-delegates and loses coherence. Sub-calls should help on quadratic tasks (paper's OOLONG-Pairs: +14 pp) but aren't a free win. Default `maxDepth=0` reflects this.
+**Honest findings across six runs:**
+- **Cost is the stable RLM win.** 2×–93× cheaper depending on context size. Never underwater.
+- **Accuracy is task-dependent.** RLM wins on small-scale aggregation (OOLONG 32K), ties on most tasks, loses on small NLP-required tasks (pairs V3) where baseline can just read everything.
+- **Sub-calls never fire on our benchmarks** even when budgeted. GPT-5 prefers bash pattern-matching. The paper's sub-call win requires a task where per-item extraction truly can't be reduced to text processing *and* the context is too big for baseline — we haven't reproduced that combination. See [`bench/results.md`](./bench/results.md) for details.
 
 Full per-item results, methodology, and caveats: [`bench/results.md`](./bench/results.md).
 
