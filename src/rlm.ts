@@ -3,7 +3,7 @@ import { z } from "zod";
 import { BashSandbox, estimateTokens, normaliseContext } from "./sandbox.js";
 import {
   ROOT_SYSTEM_PROMPT,
-  SUB_SYSTEM_PROMPT,
+  SUB_LEAF_SYSTEM_PROMPT,
   buildUserPrompt,
 } from "./prompts.js";
 import type {
@@ -17,28 +17,44 @@ import type {
 
 const DEFAULTS = {
   maxSteps: 40,
+  subMaxSteps: 20,
   maxSubCalls: 20,
+  maxDepth: 1,
   bashTimeoutMs: 20_000,
   bashOutputByteCap: 8_192,
   subPromptCharCap: 400_000,
 } as const;
+
+type ResolvedConfig = Required<
+  Omit<RLMEngineConfig, "subModel" | "sandboxRoot" | "onEvent" | "signal">
+> &
+  Pick<RLMEngineConfig, "subModel" | "sandboxRoot" | "onEvent" | "signal">;
+
+/** State shared across the entire recursion tree (root + all sub-RLMs).
+ *  Budgets and usage are global so a depth-2 call can't multiply resources. */
+interface SharedState {
+  subCalls: number;
+  bashCalls: number;
+  usage: RLMUsage;
+  trace: RLMEvent[];
+  emit: (e: RLMEvent) => void;
+}
 
 /**
  * An RLM engine. Stateless across invocations — reuse the same engine for
  * many queries. Each `invoke()` creates and disposes a fresh bash sandbox.
  */
 export class RLMEngine {
-  readonly config: Required<
-    Omit<RLMEngineConfig, "subModel" | "sandboxRoot" | "onEvent" | "signal">
-  > &
-    Pick<RLMEngineConfig, "subModel" | "sandboxRoot" | "onEvent" | "signal">;
+  readonly config: ResolvedConfig;
 
   constructor(config: RLMEngineConfig) {
     this.config = {
       model: config.model,
       subModel: config.subModel,
       maxSteps: config.maxSteps ?? DEFAULTS.maxSteps,
+      subMaxSteps: config.subMaxSteps ?? DEFAULTS.subMaxSteps,
       maxSubCalls: config.maxSubCalls ?? DEFAULTS.maxSubCalls,
+      maxDepth: config.maxDepth ?? DEFAULTS.maxDepth,
       bashTimeoutMs: config.bashTimeoutMs ?? DEFAULTS.bashTimeoutMs,
       bashOutputByteCap: config.bashOutputByteCap ?? DEFAULTS.bashOutputByteCap,
       subPromptCharCap: config.subPromptCharCap ?? DEFAULTS.subPromptCharCap,
@@ -49,7 +65,36 @@ export class RLMEngine {
   }
 
   async invoke(opts: RLMInvokeOptions): Promise<RLMResult> {
-    return await runInternal(this.config, opts);
+    const shared: SharedState = {
+      subCalls: 0,
+      bashCalls: 0,
+      usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+      trace: [],
+      emit: () => {},
+    };
+    shared.emit = (event) => {
+      shared.trace.push(event);
+      this.config.onEvent?.(event);
+    };
+    const signal = mergeSignals(opts.signal, this.config.signal);
+    const answer = await runRecursive(
+      this.config,
+      shared,
+      { query: opts.query, context: opts.context, additionalInstructions: opts.additionalInstructions ?? "" },
+      0,
+      signal,
+    );
+    return {
+      answer,
+      // `steps` is the step count of the root generateText call only;
+      // sub-invocations are counted separately via subCalls.
+      steps: shared.trace.filter((e) => e.type === "bash" && e.depth === 0).length +
+        (shared.trace.some((e) => e.type === "final" && e.depth === 0) ? 1 : 0),
+      subCalls: shared.subCalls,
+      bashCalls: shared.bashCalls,
+      usage: shared.usage,
+      trace: shared.trace,
+    };
   }
 }
 
@@ -62,25 +107,34 @@ export async function runRLM(
   return await engine.invoke(opts);
 }
 
-async function runInternal(
-  config: RLMEngine["config"],
-  opts: RLMInvokeOptions,
-): Promise<RLMResult> {
-  if (!opts.query?.trim()) {
-    throw new Error("runRLM: `query` must be a non-empty string.");
+/**
+ * Run an RLM invocation at the given depth, reusing the shared budget/usage.
+ * Returns the final answer string. Emits `start` + `final` events scoped to
+ * the given depth.
+ */
+async function runRecursive(
+  config: ResolvedConfig,
+  shared: SharedState,
+  opts: { query: string; context: RLMInvokeOptions["context"]; additionalInstructions: string },
+  depth: number,
+  signal: AbortSignal | undefined,
+): Promise<string> {
+  if (depth === 0) {
+    // Only validate at the top — sub-RLMs are driven by the framework.
+    if (!opts.query?.trim()) {
+      throw new Error("runRLM: `query` must be a non-empty string.");
+    }
   }
-  // depth is reserved for future nested-RLM recursion; events always set it so
-  // UIs/tracers can display it consistently.
-  const depth = 0;
   const items = normaliseContext(opts.context);
   if (items.length === 0) {
     throw new Error(
-      "runRLM: `context` must contain at least one item. Pass a string, string[], or ContextItem[].",
+      `runRLM@depth${depth}: context must contain at least one item.`,
     );
   }
   if (items.every((it) => !it.content.length)) {
-    throw new Error("runRLM: all context items are empty.");
+    throw new Error(`runRLM@depth${depth}: all context items are empty.`);
   }
+
   const sandbox = await BashSandbox.create({
     root: config.sandboxRoot,
     contextItems: items,
@@ -88,88 +142,119 @@ async function runInternal(
     timeoutMs: config.bashTimeoutMs,
   });
 
-  const trace: RLMEvent[] = [];
-  const emit = (event: RLMEvent) => {
-    trace.push(event);
-    config.onEvent?.(event);
-  };
-
-  let subCalls = 0;
-  let bashCalls = 0;
   let finalAnswer: string | null = null;
-  const usage: RLMUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
 
-  const signal = mergeSignals(opts.signal, config.signal);
-
-  emit({ type: "start", query: opts.query, depth });
+  shared.emit({ type: "start", query: opts.query, depth });
 
   try {
     const tools = {
       bash: tool({
         description:
-          "Execute a bash command in the sandbox. Returns combined stdout+stderr (capped). Shell state does not persist between calls; file state in $RLM_WORKDIR does.",
+          "Execute a bash command in the persistent REPL. Shell state (vars, functions, cwd) persists across bash calls. Combined stdout+stderr, capped.",
         inputSchema: z.object({
           command: z.string().describe("Bash command to execute."),
         }),
         execute: async ({ command }) => {
-          bashCalls++;
+          shared.bashCalls++;
           const result = await sandbox.execute(command, signal);
-          emit({ type: "bash", command, result, depth });
+          shared.emit({ type: "bash", command, result, depth });
           return formatBashResult(result);
         },
       }),
       llm: tool({
         description:
-          "Recursively call a language model on a focused prompt. The prompt you provide is the ENTIRE input the sub-model sees — include both the instruction and the relevant snippet. Use for summarisation, extraction, comparison, or any sub-reasoning over a slice of context.",
+          "Recursively call a sub-agent on a focused question and a slice of context you've assembled. " +
+          (depth < config.maxDepth
+            ? "The sub-agent is ITSELF an RLM — it gets its own bash sandbox with the given context as a file and can grep/slice/recurse further."
+            : "At this depth the sub-agent is a plain LLM (no tools) — useful for summarisation/extraction over the snippet."),
         inputSchema: z.object({
-          prompt: z
+          query: z
+            .string()
+            .describe("The sub-question to answer over the given context slice."),
+          context: z
             .string()
             .describe(
-              "Full prompt for the sub-LM: instruction + relevant snippet.",
+              "The context slice (verbatim snippet or assembled buffer) the sub-agent should reason over.",
             ),
         }),
-        execute: async ({ prompt }) => {
-          if (subCalls >= config.maxSubCalls) {
-            return `ERROR: sub-LM call budget exhausted (${config.maxSubCalls}). Aggregate with what you have and call final.`;
+        execute: async ({ query, context }) => {
+          if (shared.subCalls >= config.maxSubCalls) {
+            return `ERROR: sub-call budget exhausted (${config.maxSubCalls}). Aggregate with what you have and call final.`;
           }
-          if (prompt.length > config.subPromptCharCap) {
-            return `ERROR: prompt too large (${prompt.length} chars > cap ${config.subPromptCharCap}). Split it and recurse on smaller pieces.`;
+          const totalChars = query.length + context.length;
+          if (totalChars > config.subPromptCharCap) {
+            return `ERROR: sub-call inputs too large (${totalChars} chars > cap ${config.subPromptCharCap}). Split further.`;
           }
-          subCalls++;
-          const { text, usage: subUsage } = await callSubLM(
-            config,
-            prompt,
-            signal,
-          );
-          if (subUsage) accumulateUsage(usage, subUsage);
-          emit({
-            type: "sub-llm",
-            prompt,
-            response: text,
-            ...(subUsage ? { usage: subUsage } : {}),
-            depth,
-          });
-          return text;
+          shared.subCalls++;
+
+          const contextPreview =
+            context.length > 200 ? context.slice(0, 200) + "…" : context;
+
+          if (depth < config.maxDepth) {
+            // True recursion: sub-agent is a nested RLM with its own sandbox.
+            shared.emit({
+              type: "sub-start",
+              query,
+              contextPreview,
+              depth: depth + 1,
+            });
+            const subAnswer = await runRecursive(
+              config,
+              shared,
+              { query, context, additionalInstructions: "" },
+              depth + 1,
+              signal,
+            );
+            shared.emit({
+              type: "sub-end",
+              answer: subAnswer,
+              depth: depth + 1,
+            });
+            return subAnswer;
+          } else {
+            // Leaf: plain generateText with no tools.
+            const { text, usage: subUsage } = await callLeafLM(
+              config,
+              query,
+              context,
+              signal,
+            );
+            if (subUsage) accumulateUsage(shared.usage, subUsage);
+            shared.emit({
+              type: "sub-llm",
+              query,
+              contextPreview,
+              response: text,
+              ...(subUsage ? { usage: subUsage } : {}),
+              depth,
+            });
+            return text;
+          }
         },
       }),
       final: tool({
         description:
-          "Return the final answer and stop. Call this exactly once when you have the answer. Do not call bash or llm after this.",
+          "Return the final answer and stop. Call exactly once when you have the answer.",
         inputSchema: z.object({
           answer: z
             .string()
-            .describe("The final natural-language answer to the user query."),
+            .describe("The final natural-language answer to the query."),
         }),
         execute: async ({ answer }) => {
           finalAnswer = answer;
-          emit({ type: "final", answer, depth });
+          shared.emit({ type: "final", answer, depth });
           return "ok";
         },
       }),
     };
 
+    const stepCap = depth === 0 ? config.maxSteps : config.subMaxSteps;
+    // Root runs on the primary model; nested sub-RLMs use subModel when
+    // configured (matches the paper's "GPT-5 + GPT-5-mini for recursion").
+    const activeModel =
+      depth === 0 ? config.model : (config.subModel ?? config.model);
     const result = await generateText({
-      model: config.model,
+      model: activeModel,
       system: ROOT_SYSTEM_PROMPT,
       prompt: buildUserPrompt(
         opts.query,
@@ -177,34 +262,25 @@ async function runInternal(
         opts.additionalInstructions,
       ),
       tools,
-      stopWhen: [stepCountIs(config.maxSteps), hasToolCall("final")],
+      stopWhen: [stepCountIs(stepCap), hasToolCall("final")],
       abortSignal: signal,
     });
 
     const rootUsage = extractUsage(result.usage);
-    if (rootUsage) accumulateUsage(usage, rootUsage);
+    if (rootUsage) accumulateUsage(shared.usage, rootUsage);
 
     if (finalAnswer === null) {
-      // Model exited without calling final — fall back to its text.
       finalAnswer = result.text?.trim() || "(no answer produced)";
-      emit({
+      shared.emit({
         type: "error",
-        error: "RLM exited without final() — used trailing text as fallback.",
+        error: `RLM@depth${depth} exited without final() — used trailing text as fallback.`,
         depth,
       });
     }
-
-    return {
-      answer: finalAnswer,
-      steps: result.steps?.length ?? 0,
-      subCalls,
-      bashCalls,
-      usage,
-      trace,
-    };
+    return finalAnswer;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    emit({ type: "error", error: message, depth });
+    shared.emit({ type: "error", error: message, depth });
     throw err;
   } finally {
     await sandbox.dispose();
@@ -226,16 +302,19 @@ function formatBashResult(result: BashResult): string {
   return `[${meta}]\n${body || "(no output)"}`;
 }
 
-async function callSubLM(
-  config: RLMEngine["config"],
-  prompt: string,
+/** Leaf sub-LM call — no tools, just a single generateText. Used at the
+ *  deepest recursion level. */
+async function callLeafLM(
+  config: ResolvedConfig,
+  query: string,
+  context: string,
   signal?: AbortSignal,
 ): Promise<{ text: string; usage?: RLMUsage }> {
   const model = config.subModel ?? config.model;
   const res = await generateText({
     model,
-    system: SUB_SYSTEM_PROMPT,
-    prompt,
+    system: SUB_LEAF_SYSTEM_PROMPT,
+    prompt: `# Context\n${context}\n\n# Question\n${query}`,
     abortSignal: signal,
   });
   const u = extractUsage(res.usage);
@@ -279,7 +358,6 @@ function mergeSignals(
 ): AbortSignal | undefined {
   if (!a) return b;
   if (!b) return a;
-  // Node ≥20 (our `engines` floor) ships AbortSignal.any — no fallback needed.
   return AbortSignal.any([a, b]);
 }
 

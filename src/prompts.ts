@@ -25,7 +25,7 @@ You drive a persistent bash REPL plus a recursive language-model call. Your job 
 ## Tools
 
 1. \`bash(command: string)\` — execute a bash command in the persistent REPL. State carries over. Keep commands focused.
-2. \`llm(prompt: string)\` — recursively call a language model on a focused prompt. The prompt is the ENTIRE input the sub-model sees; include the question AND the relevant snippet. The sub-LM has no access to your REPL or context files.
+2. \`llm({ query, context })\` — recursively call a sub-agent on a focused \`query\` over the \`context\` slice you supply. Below the max recursion depth, the sub-agent is itself an RLM with its own bash sandbox, and can grep/slice/recurse further inside your \`context\`. At max depth it becomes a plain single-shot LLM. Either way, the sub-agent sees ONLY what you pass — be explicit.
 3. \`final(answer: string)\` — return the final answer and stop. Call exactly once.
 
 ## Working with the persistent REPL
@@ -36,7 +36,7 @@ Because state persists, a typical session looks like:
   bash: files=("$RLM_CTX_DIR"/*.txt); echo "\${#files[@]} files"
   bash: hits=$(grep -l 'Acme' "\${files[@]}"); echo "$hits"
   bash: first_hit=$(echo "$hits" | head -1); grep -n 'Acme' "$first_hit" | head -20
-  llm:  "Given this snippet: <...>. Who is the CEO?"
+  llm:  { query: "Who is the CEO?", context: "<snippet with grep hits>" }
   final: "Prof. Zanzibar Montgomery III"
 
 Notice: \`files\`, \`hits\`, \`first_hit\` persist. You don't have to re-run the search.
@@ -52,8 +52,8 @@ Notice: \`files\`, \`hits\`, \`first_hit\` persist. You don't have to re-run the
 ## Rules
 
 - Always inspect context with \`bash\` before calling \`llm\` — don't invent facts.
-- Every \`llm\` prompt must include: (a) a clear instruction, (b) the relevant snippet verbatim.
-- Keep \`llm\` prompts focused and reasonably small. If a snippet is big, split and recurse.
+- Every \`llm\` call must supply both \`query\` (the sub-question) and \`context\` (the snippet to reason over) — nothing else is carried over.
+- Keep \`llm\` \`context\` focused. If the slice is still large and needs its own exploration (filter/aggregate), prefer a nested \`llm\` — the sub-agent has bash and can recurse further itself.
 - Do NOT redefine \`__rlm_done\` or touch anything named \`__rlm_*\` — they are the protocol between you and the harness. Ignore their appearance in stray output.
 - When you have the answer, call \`final\` with a clean natural-language response. Do not call \`final\` inside a bash command.
 `;
@@ -76,4 +76,7 @@ export function buildUserPrompt(
   return parts.join("\n\n");
 }
 
-export const SUB_SYSTEM_PROMPT = `You are a focused assistant answering a sub-question from a parent Recursive Language Model. You are given a specific instruction and a snippet of text. Answer the instruction using ONLY the snippet. Be concise and factual. If the snippet does not contain the answer, say so explicitly ("NOT_FOUND: ...") rather than guessing.`;
+export const SUB_LEAF_SYSTEM_PROMPT = `You are a focused assistant answering a sub-question from a parent Recursive Language Model. You are given a specific \`# Question\` and a \`# Context\` snippet. Answer the question using ONLY the snippet. Be concise and factual. If the snippet does not contain the answer, say so explicitly ("NOT_FOUND: ...") rather than guessing.`;
+
+/** @deprecated renamed to SUB_LEAF_SYSTEM_PROMPT in v0.2 */
+export const SUB_SYSTEM_PROMPT = SUB_LEAF_SYSTEM_PROMPT;

@@ -55,15 +55,31 @@ export interface RLMUsage {
   totalTokens: number;
 }
 
-/** A single event emitted during an RLM run. Useful for tracing / UIs. */
+/** A single event emitted during an RLM run. Useful for tracing / UIs.
+ *  `depth` is 0 for the root, 1 for a sub-RLM, 2 for a sub-sub-RLM, etc. */
 export type RLMEvent =
   | { type: "start"; query: string; depth: number }
   | { type: "bash"; command: string; result: BashResult; depth: number }
   | {
+      /** Leaf sub-LLM call (recursion bottomed out at maxDepth). */
       type: "sub-llm";
-      prompt: string;
+      query: string;
+      contextPreview: string;
       response: string;
       usage?: RLMUsage;
+      depth: number;
+    }
+  | {
+      /** Nested sub-RLM call (depth < maxDepth) — its own inner trace follows
+       *  until the matching "sub-end" event. */
+      type: "sub-start";
+      query: string;
+      contextPreview: string;
+      depth: number;
+    }
+  | {
+      type: "sub-end";
+      answer: string;
       depth: number;
     }
   | { type: "final"; answer: string; depth: number }
@@ -95,8 +111,22 @@ export interface RLMEngineConfig {
   subModel?: LanguageModel;
   /** Max steps the root LM may take (bash + llm calls). Default: 40. */
   maxSteps?: number;
-  /** Max total recursive sub-LM calls. Default: 20. */
+  /** Max steps the LM inside a nested sub-RLM may take. Default: 20. */
+  subMaxSteps?: number;
+  /**
+   * Max total recursive sub-LM calls, summed across the entire tree of
+   * invocations (root + every nested sub-RLM). Default: 20.
+   */
   maxSubCalls?: number;
+  /**
+   * Max recursion depth for the `llm` tool. `maxDepth=0` forces every
+   * `llm` call to be a leaf (plain generateText, no inner sandbox) —
+   * equivalent to the paper's "RLM w/o sub-calls" ablation.
+   * `maxDepth=1` (default) lets the root LM spawn sub-RLMs that themselves
+   * use bash, but those sub-RLMs cannot recurse further.
+   * `maxDepth=2+` enables multi-layer aggregation.
+   */
+  maxDepth?: number;
   /** Per-bash-command timeout in ms. Default: 20_000. */
   bashTimeoutMs?: number;
   /** Cap on bash stdout+stderr bytes returned per call. Default: 8_192. */
