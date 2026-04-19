@@ -1,74 +1,56 @@
 /**
- * Basic RLM example — ask a question over a large synthetic context.
+ * Basic RLM example — code understanding over the rlm-ai-sdk repo itself.
  *
- * Run:
+ * The "context" is this very package's source code. We ask the RLM a
+ * question that requires navigating multiple files, then print the full
+ * trace so you can see exactly how the root LM drove the persistent bash
+ * REPL to answer.
+ *
  *   pnpm example:basic
  */
-import "dotenv/config";
+import {
+  loadRepoContext,
+  makeEventPrinter,
+  printResultSummary,
+  requireEnv,
+} from "./_shared.js";
 import { openai } from "@ai-sdk/openai";
 import { runRLM } from "../src/index.js";
 
-const NEEDLE = "The CEO of Acme Corp is named Prof. Zanzibar Montgomery III.";
+requireEnv("OPENAI_API_KEY");
 
-function buildHaystack(): string[] {
-  const chunks: string[] = [];
-  for (let i = 0; i < 20; i++) {
-    const lines: string[] = [];
-    for (let j = 0; j < 200; j++) {
-      lines.push(
-        `filler line ${i}:${j} — some company info about quarterly revenue, widgets, and compliance.`,
-      );
-    }
-    if (i === 13) lines[73] = NEEDLE;
-    chunks.push(lines.join("\n"));
-  }
-  return chunks;
-}
+const ROOT = "gpt-5";
+const SUB = "gpt-5-mini";
 
-async function main() {
-  if (!process.env.OPENAI_API_KEY) {
-    console.error("Set OPENAI_API_KEY (or symlink .env) to run this example.");
-    process.exit(1);
-  }
+const context = await loadRepoContext([
+  "src/rlm.ts",
+  "src/sandbox.ts",
+  "src/middleware.ts",
+  "src/tool.ts",
+  "src/types.ts",
+  "src/prompts.ts",
+  "README.md",
+]);
 
-  const context = buildHaystack();
-  const totalChars = context.reduce((n, c) => n + c.length, 0);
-  console.log(
-    `Context: ${context.length} chunks, ${totalChars.toLocaleString()} chars.`,
-  );
+const totalChars = context.reduce((n, c) => n + c.content.length, 0);
+console.log(
+  `Context: ${context.length} files, ${totalChars.toLocaleString()} chars (~${Math.ceil(totalChars / 4 / 1000)}K tokens).\n`,
+);
 
-  const model = openai("gpt-5-mini");
-  const result = await runRLM(
-    {
-      model,
-      maxSteps: 30,
-      maxSubCalls: 10,
-      onEvent: (e) => {
-        if (e.type === "bash") {
-          console.log(`[bash] ${e.result.durationMs}ms exit=${e.result.exitCode}`);
-        } else if (e.type === "sub-llm") {
-          console.log(`[sub-llm] ${e.response.slice(0, 80)}`);
-        } else if (e.type === "final") {
-          console.log(`[final]`);
-        } else if (e.type === "error") {
-          console.log(`[error] ${e.error}`);
-        }
-      },
-    },
-    {
-      query: "Who is the CEO of Acme Corp? Respond with the person's name only.",
-      context,
-    },
-  );
+const start = Date.now();
+const result = await runRLM(
+  {
+    model: openai(ROOT),
+    subModel: openai(SUB),
+    maxSteps: 30,
+    maxSubCalls: 8,
+    onEvent: makeEventPrinter(),
+  },
+  {
+    query:
+      "In this codebase, explain concretely how the RLM prevents output from exceeding its configured byte cap. Which file implements it, and what happens if the cap is hit while the done-marker is still arriving? Answer in 2-3 sentences citing the relevant function name.",
+    context,
+  },
+);
 
-  console.log("\n=== Answer ===");
-  console.log(result.answer);
-  console.log(
-    `\nSteps=${result.steps} bashCalls=${result.bashCalls} subCalls=${result.subCalls}`,
-  );
-}
-
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+printResultSummary(ROOT, result, Date.now() - start);
