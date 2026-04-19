@@ -154,12 +154,13 @@ The examples read `.env` at the repo root for `OPENAI_API_KEY`.
 
 Benchmarked with the same models as the [RLM paper](https://arxiv.org/abs/2512.24601): **GPT-5** (root) + **GPT-5-mini** (sub-calls).
 
-| Benchmark | Context | Baseline | RLM | Cost ratio |
-|---|---|---|---|---|
-| S-NIAH (needle-in-haystack) | 8K–256K | 100% | 100% | RLM **93x cheaper** @256K |
-| LongBench-v2 CodeQA (N=10, ≤128K) | 25K–121K | 60% | **70%** | RLM **4x cheaper** |
+| Benchmark | Context | Baseline | RLM (bash only) | RLM + sub-calls | Cost |
+|---|---|---|---|---|---|
+| S-NIAH | 8K–256K | 100% | 100% | — | RLM **93× cheaper** @256K |
+| LongBench-v2 CodeQA (N=10) | 25K–121K | ~60% | ~70% | — | RLM ~4× cheaper |
+| OOLONG counting @ 32K (N=10) | 24K | 60% | **90%** | 70% | RLM no-sub **3× cheaper** |
 
-Paper reported: CodeQA baseline 24% → RLM 62% (+38pp). Our smaller delta (+10pp) is expected — we capped at ≤128K tokens so baseline never overflows. On items that fit the context window, GPT-5 baseline is already decent; RLM still wins on accuracy and dramatically on cost.
+**Honest finding on OOLONG:** bash-only RLM beats baseline by 30 pp. Adding sub-calls *hurt* on this simple aggregation task — the root LM over-delegates and loses coherence. Sub-calls should help on quadratic tasks (paper's OOLONG-Pairs: +14 pp) but aren't a free win. Default `maxDepth=0` reflects this.
 
 Full per-item results, methodology, and caveats: [`bench/results.md`](./bench/results.md).
 
