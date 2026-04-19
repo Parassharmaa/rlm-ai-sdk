@@ -65,7 +65,17 @@ Three conditions:
 |---|---|---|---|
 | Baseline (gpt-5 direct) | **60%** (6/10) | $1.10 | 3.5 min |
 | RLM no-sub (bash only) | **90%** (9/10) | $0.34 | 2.1 min |
-| RLM w/ leaf sub-calls | **70%** (7/10) | $2.36 | 7.7 min |
+| RLM w/ leaf sub-calls (v1 prompt) | 70% (7/10) | $2.36 | 7.7 min |
+| RLM w/ leaf sub-calls (**v2 tuned**) | **80%** (8/10) | $2.04 | 4.5 min |
+
+### Prompt tuning experiment (v1 → v2)
+
+All 3 v1 with-sub failures were `(no answer produced)` — step-budget exhaustion after the model delegated many classifications to sub-LMs. The v2 prompt (commit `e24a529`) added:
+- Explicit "when NOT to use \`llm\`" list (counting tasks, small corpora the root can read directly).
+- Strategy order changed: PEEK → GREP → READ-AND-ANSWER → only then PARTITION+MAP with sub-calls.
+- "Finishing" section: aim to \`final\` within the first two-thirds of the step budget.
+
+Effect: **+10 pp accuracy, −14% cost, −43% wall time** vs v1 prompt. The model now often skips sub-calls entirely (4 of 10 items: sub=0) when the task is tractable via bash reading, and when it does delegate it finalises within budget.
 
 **Takeaway.** On this task, **bash-only RLM beats baseline by 30 pp** — the structured decomposition (peek → partition → classify in chunks → aggregate) helps more than flat reading. Adding sub-calls **hurts**: when the root LM delegates classification to sub-LMs, small inconsistencies accumulate, the root spends many steps reconciling, and sometimes runs out of steps without finalising. Sub-calls should help only on truly quadratic tasks (OOLONG-Pairs) or large-scale summarisation. The paper reports exactly this distinction — 58% full RLM vs 43.9% no-sub on OOLONG-Pairs — but for simple counting, bash alone wins.
 
