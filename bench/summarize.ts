@@ -123,13 +123,56 @@ function summariseCodeQA(records: RunRecord[]): string {
   return out.join("\n");
 }
 
+function summariseOolong(records: RunRecord[]): string {
+  const out: string[] = [];
+  const oolong = records.filter((r) => r.suite === "oolong");
+  if (oolong.length === 0) return "";
+  out.push("\n## OOLONG counting @ 32K (N=10)\n");
+  out.push(
+    "Task: MOST_FREQ / LEAST_FREQ over 80 binary-labelled items. Aggregation task — requires classifying every item and counting. Paper comparable: OOLONG-Pairs (quadratic aggregation).\n",
+  );
+  const base = oolong.filter((r) => r.condition === "baseline");
+  // RLM records use suffixed itemIds to distinguish ablations.
+  const rlmNoSub = oolong.filter((r) => r.condition === "rlm" && r.itemId.endsWith("__no_sub"));
+  const rlmWithSub = oolong.filter(
+    (r) => r.condition === "rlm" && r.itemId.endsWith("__with_sub"),
+  );
+
+  const stats = (rs: RunRecord[]) => {
+    const ran = rs.filter((r) => r.score !== null);
+    const pass = rs.filter((r) => r.score === 1).length;
+    const cost = rs.reduce((s, r) => s + r.costUSD, 0);
+    const elapsed = rs.reduce((s, r) => s + r.elapsedMs, 0);
+    return {
+      pct: ran.length > 0 ? pct(pass, ran.length) : "—",
+      fraction: `${pass}/${ran.length}`,
+      cost: cost.toFixed(2),
+      avgS: rs.length ? (elapsed / rs.length / 1000).toFixed(1) : "—",
+    };
+  };
+  const b = stats(base);
+  const n = stats(rlmNoSub);
+  const w = stats(rlmWithSub);
+  out.push(
+    "| Condition | Accuracy | Total cost | Avg wall time |",
+  );
+  out.push("|---|---|---|---|");
+  out.push(`| Baseline (gpt-5 direct) | **${b.pct}** (${b.fraction}) | $${b.cost} | ${b.avgS}s |`);
+  out.push(`| RLM no-sub (bash only, ablation) | **${n.pct}** (${n.fraction}) | $${n.cost} | ${n.avgS}s |`);
+  out.push(`| RLM w/ leaf sub-calls (maxDepth=0, maxSubCalls=10) | **${w.pct}** (${w.fraction}) | $${w.cost} | ${w.avgS}s |`);
+  return out.join("\n");
+}
+
 const all: RunRecord[] = [
   ...loadJsonl("bench/results/niah.jsonl"),
   ...loadJsonl("bench/results/codeqa.jsonl"),
+  ...loadJsonl("bench/results/oolong.jsonl"),
 ];
 
 if (all.length === 0) {
-  console.log("No results yet. Run bench/run-niah.ts or bench/run-codeqa.ts first.");
+  console.log(
+    "No results yet. Run bench/run-niah.ts, bench/run-codeqa.ts, or bench/run-oolong.ts first.",
+  );
   process.exit(0);
 }
 
@@ -139,3 +182,4 @@ console.log(
 );
 console.log(summariseNIAH(all));
 console.log(summariseCodeQA(all));
+console.log(summariseOolong(all));

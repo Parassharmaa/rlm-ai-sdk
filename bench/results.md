@@ -1,98 +1,90 @@
 # RLM benchmarks — gpt-5 root / gpt-5-mini sub
 
-Generated: **2026-04-16**
-Implementation: this repo (`src/rlm.ts`, persistent bash REPL)
+Generated: **2026-04-19**
+Implementation: this repo (`src/rlm.ts`, persistent bash REPL, true recursion via `maxDepth`).
 Paper: Zhang, Kraska & Khattab (2025), [*Recursive Language Models*](https://arxiv.org/abs/2512.24601)
-Models: same as the paper's primary setup — **GPT-5** (root) + **GPT-5-mini** (sub-calls).
+Models: **GPT-5** (root) + **GPT-5-mini** (sub-calls) — matches the paper's primary setup.
 
-## Headline
+## TL;DR
 
-| Metric | S-NIAH (@256K) | CodeQA (≤128K subset) |
-|---|---|---|
-| Baseline accuracy | 100% | 60% |
-| RLM accuracy | 100% | **70%** |
-| Baseline cost / item | $0.28 | $0.11 |
-| RLM cost / item | $0.003 | $0.028 |
-| **Cost multiplier (RLM cheaper)** | **~93×** | **~4×** |
+1. **S-NIAH (needle search, 8K–256K tokens):** 100% for both baseline and RLM. RLM is ~93× cheaper at 256K because the haystack never enters the LM's prompt.
+2. **LongBench-v2 CodeQA (≤128K tokens, N=10):** RLM comparable-to-slightly-better than baseline; ~4× cheaper.
+3. **OOLONG counting @ 32K (N=10, aggregation):** RLM bash-only (90%) beats baseline (60%) by 30 pp and is ~3× cheaper. **Adding sub-calls HURT here (70%)** — on this task the model over-delegates and loses coherence. Honest, unexpected finding.
 
 ## 1. S-NIAH (single needle in a haystack)
 
-N=3 samples per length, synthetic filler with one `"The magic number is XYZABC."` sentence at a random position. Scoring: exact alphanumeric match.
+N=3 samples per length, synthetic lorem-ipsum filler with one `"The magic number is XYZABC."` line.
 
-| Length | Baseline (gpt-5) | RLM (gpt-5 + gpt-5-mini) | Base $ | RLM $ | Base time | RLM time |
-|--------|------------------|---------------------------|--------|-------|-----------|----------|
-| 8K | 100.0% (3/3) | 100.0% (3/3) | $0.030 | $0.011 | 4.1s | 11.3s |
-| 32K | 100.0% (3/3) | 100.0% (3/3) | $0.109 | $0.011 | 16.9s | 11.4s |
-| 128K | 100.0% (3/3) | 100.0% (3/3) | $0.424 | $0.010 | 11.3s | 10.7s |
-| 256K | 100.0% (3/3) | 100.0% (3/3) | $0.840 | $0.009 | 16.6s | 11.3s |
+| Length | Baseline (gpt-5) | RLM | Base $ | RLM $ |
+|---|---|---|---|---|
+| 8K  | 3/3 (100%) | 3/3 (100%) | $0.030 | $0.011 |
+| 32K | 3/3 (100%) | 3/3 (100%) | $0.109 | $0.011 |
+| 128K | 3/3 (100%) | 3/3 (100%) | $0.424 | $0.010 |
+| 256K | 3/3 (100%) | 3/3 (100%) | $0.840 | $0.009 |
 
-**Totals:** baseline $1.40, RLM $0.04 over 12 runs each.
-
-**Reading:** GPT-5 is strong enough to solve S-NIAH at all our tested lengths, so accuracy saturates at 100% for both — this matches the paper's finding that S-NIAH is "constant complexity" and not a differentiator for capable models. The real signal is **cost**: RLM holds flat at ~$0.003 per run regardless of haystack size because gpt-5 never ingests the haystack — it lives on disk and bash does the search. Baseline cost scales ~linearly with context (`$0.030 → $0.84` from 8K → 256K, a **93× gap at 256K**).
-
-The paper doesn't publish an S-NIAH accuracy table (only a scaling plot in Fig. 1); our 100%/100% result is consistent with their claim that RLM doesn't regress on constant-complexity needle tasks.
+**Takeaway:** GPT-5 solves NIAH regardless of length — accuracy is not the differentiator. But baseline cost scales linearly with context while RLM stays flat (the haystack lives on disk; only metadata enters the prompt). **93× cost gap at 256K.**
 
 ## 2. LongBench-v2 CodeQA
 
-Dataset: [zai-org/LongBench-v2](https://huggingface.co/datasets/zai-org/LongBench-v2). We pulled the first 10 `Code Repository Understanding` items with context ≤128K tokens (so the baseline fits in gpt-5's context window on every item). 4-way multiple-choice; scoring by extracted letter.
+Dataset: [zai-org/LongBench-v2](https://huggingface.co/datasets/zai-org/LongBench-v2). 10 items from `Code Repository Understanding` ≤128K tokens. 4-way multiple choice.
 
-- **Baseline (gpt-5 direct):** 60.0% (6/10) — cost $1.12
-- **RLM (gpt-5 + gpt-5-mini):** **70.0%** (7/10) — cost $0.28
+Results pending fresh re-run (in progress). Prior run (April 16, partial JSONL):
+- Baseline: ~60% · ~$1.12
+- RLM:       ~70% · ~$0.28
 
-### Per-item
+See `bench/results/codeqa.log` for the full April 16 trace.
 
-| Item | Tokens | Diff | Base | RLM | RLM steps/bash/sub |
-|------|--------|------|------|-----|--------------------|
-| 66ebd3ba | 113K | hard | ❌ | ❌ | 9/8/0 |
-| 66ec3644 | 99K  | hard | ❌ | ✅ | 19/18/0 |
-| 66ecf139 | 49K  | hard | ✅ | ❌ | 13/12/0 |
-| 66ed3e90 | 70K  | easy | ✅ | ✅ | 8/7/0 |
-| 66f39ac5 | 86K  | easy | ❌ | ✅ | 13/12/0 |
-| 66f3ad93 | 25K  | hard | ✅ | ✅ | 15/14/0 |
-| 66f3c219 | 121K | hard | ✅ | ✅ | 18/17/0 |
-| 66f3cb88 | 92K  | hard | ✅ | ✅ | 21/20/0 |
-| 66f530ce | 48K  | easy | ✅ | ✅ | 10/9/0 |
-| 66fa50ac | 82K  | easy | ❌ | ❌ | 14/13/0 |
+## 3. OOLONG counting @ 32K (N=10)
 
-Flips: RLM recovered 2 items the baseline missed (99K/hard, 86K/easy); baseline recovered 1 RLM missed (49K/hard). Net: +10 percentage points to RLM on this subset.
+Dataset: [oolongbench/oolong-synth](https://huggingface.co/datasets/oolongbench/oolong-synth), `MOST_FREQ` / `LEAST_FREQ` tasks over 80 binary-labelled items. The model must classify every item and count — an aggregation task in the same complexity class as the paper's OOLONG-Pairs.
 
-### vs. paper
+Three conditions:
+- **Baseline** — `generateText(gpt-5)` with the full 32K context.
+- **RLM no-sub** — root LM drives bash only; `maxSubCalls=0` makes the `llm` tool error out (ablation).
+- **RLM with leaf sub-calls** — `maxDepth=0, maxSubCalls=10`; the `llm` tool calls gpt-5-mini on focused snippets.
 
-| | Paper (full CodeQA, 23K–4.2M tokens) | Ours (≤128K subset) |
+| Condition | Accuracy | Total cost | Avg wall |
+|---|---|---|---|
+| Baseline (gpt-5 direct) | **60%** (6/10) | $1.10 | 3.5 min |
+| RLM no-sub (bash only) | **90%** (9/10) | $0.34 | 2.1 min |
+| RLM w/ leaf sub-calls | **70%** (7/10) | $2.36 | 7.7 min |
+
+**Takeaway.** On this task, **bash-only RLM beats baseline by 30 pp** — the structured decomposition (peek → partition → classify in chunks → aggregate) helps more than flat reading. Adding sub-calls **hurts**: when the root LM delegates classification to sub-LMs, small inconsistencies accumulate, the root spends many steps reconciling, and sometimes runs out of steps without finalising. Sub-calls should help only on truly quadratic tasks (OOLONG-Pairs) or large-scale summarisation. The paper reports exactly this distinction — 58% full RLM vs 43.9% no-sub on OOLONG-Pairs — but for simple counting, bash alone wins.
+
+### Comparison to paper's OOLONG
+
+| | Paper (OOLONG, 131K) | Ours (counting, 32K) |
 |---|---|---|
-| GPT-5 baseline | 24% | 60% |
-| GPT-5 RLM | 62% | 70% |
-| Delta | **+38 pp** | **+10 pp** |
+| Baseline | 44% | 60% |
+| RLM (with sub-calls) | 56.5% | 70% |
 
-**Why our delta is smaller than the paper's:** we capped context at 128K so every baseline call *fits*. The paper's full suite includes items up to 4.2M tokens where baseline hits context overflow and scores 0% — which drags the baseline number down and inflates the gap. On items that fit the window, gpt-5 does well; RLM still wins modestly on accuracy and dramatically on cost.
+Paper's pattern (RLM > baseline) reproduces. Absolute numbers differ — we tested a smaller variant on a simpler task type, with fewer items, so confidence intervals are wide.
 
-Directionally consistent with the paper's claim: **RLM ≥ baseline on accuracy, and gets cheaper as context grows**.
+## How the recursion is actually implemented
 
-## 3. Notes on sub-call usage
+- **Default `maxDepth=0`:** every `llm(query, context)` call is a plain `generateText` leaf. Matches the paper's `llm_query` semantics for summarisation / extraction.
+- **`maxDepth=1`:** sub-calls become their own full RLM with a private bash sandbox; they can grep/slice within their `context` slice and call `llm` themselves (leaf at their depth).
+- **`maxDepth=2+`:** multi-layer nesting — expensive (each level is its own sandbox + its own reasoning loop). A 1-item smoke with nested mode burned $0.28 and 19 minutes without finalising on a task that leaf-sub solved in 2 minutes. Nesting is opt-in, not default.
+- **Global budgets:** `maxSubCalls` and usage counters are shared across the whole recursion tree so a deep call can't multiply resources.
 
-Across 22 RLM runs we observed **0 `llm` sub-calls** — gpt-5 solved everything by driving bash alone, no recursive sub-LM calls needed. The persistent REPL (shell vars + functions + files persisting across bash calls) was sufficient. Sub-calls would likely start firing on tasks that require true summarisation/aggregation (OOLONG-Pairs, BrowseComp-Plus deep-research), where a single grep hit doesn't answer the question.
+Source: `src/rlm.ts` `runRecursive` with the `SharedState` object threaded through every depth.
 
-## 4. What we did *not* run (and why)
-
-| Benchmark | Paper result (GPT-5) | Why skipped |
-|---|---|---|
-| BrowseComp-Plus | 0% → **91.3%** | Full eval ~$1000; contexts 6M–11M tokens don't fit any single-model call anyway |
-| OOLONG-Pairs | 0.04% → **58%** | Public dataset exists ([HF](https://huggingface.co/oolongbench)); would be the most dramatic demonstration but needs a careful replication pass — good next step |
-| OOLONG (main) | 44% → **56.5%** | Feasible; similar cost to our CodeQA run — good next step |
-
-## 5. Reproducing
+## Reproducing
 
 ```bash
-pnpm tsx bench/run-niah.ts     # ~$1.50, ~5 min
-pnpm tsx bench/run-codeqa.ts   # ~$1.50, ~15 min
-pnpm tsx bench/summarize.ts    # aggregates bench/results/*.jsonl
+bash bench/download-data.sh       # fetch LongBench-v2 (~465 MB)
+pnpm tsx bench/run-niah.ts        # $1.50,  ~5 min
+pnpm tsx bench/run-codeqa.ts      # $1.50, ~15 min
+pnpm tsx bench/run-oolong.ts      # $4.00, ~90 min (3 conditions × 10 items)
+pnpm tsx bench/summarize.ts       # aggregate → markdown
 ```
 
-Raw results in `bench/results/{niah,codeqa}.jsonl` (one record per run). Generators deterministic (seeded); CodeQA pulls items in `_id` sort order for reproducibility.
+Raw records in `bench/results/{niah,codeqa,oolong}.jsonl`. Seeded generators; stable item ordering.
 
-## 6. Caveats
+## Caveats
 
-- **N=3 / N=10 is small.** Confidence intervals are wide. Larger N would firm the CodeQA delta.
-- **Cost accounting** charges RLM's sub-call tokens at the root-model rate (gpt-5) as a conservative upper bound. Real RLM cost is lower because sub-calls hit gpt-5-mini.
-- **We do not reproduce the paper's judge-model setup** (OOLONG uses grading rubrics). Our scoring is exact-match for NIAH and letter extraction for CodeQA (matching LongBench's official eval).
-- **Single run per condition.** No variance estimation across repeated runs on the same item.
+- **N=10 is small.** Confidence intervals are wide on the CodeQA/OOLONG comparisons. A single flip swings accuracy by 10 pp.
+- **Single-run per condition.** No variance estimation across repeated runs on the same item.
+- **Cost accounting.** We price RLM sub-calls at the sub-model rate (gpt-5-mini) — accurate, but the root-LM rate is the dominant term anyway.
+- **1 baseline API error** on OOLONG (item 034, provider timeout at 15 min).
+- **OOLONG "counting" ≠ paper's OOLONG-Pairs.** Pairs is a public-dataset gap — it's described in the Oolong paper but not shipped under that name in [`oolongbench/oolong-synth`](https://huggingface.co/datasets/oolongbench/oolong-synth). Counting is the same flavour (aggregation of per-item labels) at a similar scale.
