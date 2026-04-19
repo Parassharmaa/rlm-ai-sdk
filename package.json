@@ -1,0 +1,66 @@
+{
+  "name": "rlm-ai-sdk",
+  "version": "0.1.0",
+  "description": "Recursive Language Models (RLM) plugin for the Vercel AI SDK. Bash-sandboxed REPL that lets any AI SDK model programmatically explore oversized contexts and recursively call itself on slices.",
+  "keywords": [
+    "ai",
+    "ai-sdk",
+    "rlm",
+    "recursive-language-models",
+    "long-context",
+    "agent",
+    "vercel-ai-sdk"
+  ],
+  "license": "MIT",
+  "author": "rlm-ai-sdk contributors",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "pnpm typecheck && pnpm test && pnpm build",
+    "prepublishOnly": "pnpm check",
+    "example:basic": "tsx examples/basic.ts",
+    "example:middleware": "tsx examples/middleware.ts",
+    "example:tool": "tsx examples/tool.ts"
+  },
+  "peerDependencies": {
+    "ai": "^5.0.0 || ^6.0.0",
+    "zod": "^3.23.0 || ^4.0.0"
+  },
+  "devDependencies": {
+    "@ai-sdk/anthropic": "^3.0.69",
+    "@ai-sdk/openai": "^3.0.52",
+    "@types/node": "^25.6.0",
+    "ai": "^6.0.159",
+    "dotenv": "^17.0.0",
+    "tsup": "^8.5.1",
+    "tsx": "^4.19.2",
+    "typescript": "^6.0.2",
+    "vite": "^7.3.2",
+    "vitest": "^4.1.4",
+    "zod": "^4.3.6"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@10.29.3"
+}
