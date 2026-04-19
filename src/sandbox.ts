@@ -63,25 +63,34 @@ export class BashSandbox {
   }): Promise<BashSandbox> {
     const root = opts.root ?? tmpdir();
     const workdir = await mkdtemp(join(root, "rlm-"));
-    const ctxDir = join(workdir, "ctx");
-    await mkdir(ctxDir, { recursive: true });
+    // Cleanup workdir on any setup failure (write error, bash missing, etc.)
+    // so we don't leak temp directories.
+    try {
+      const ctxDir = join(workdir, "ctx");
+      await mkdir(ctxDir, { recursive: true });
 
-    for (const item of opts.contextItems) {
-      if (!/^[a-zA-Z0-9_.-]+$/.test(item.id)) {
-        throw new Error(
-          `Invalid context id "${item.id}" — must match [a-zA-Z0-9_.-]+`,
-        );
+      for (const item of opts.contextItems) {
+        if (!/^[a-zA-Z0-9_.-]+$/.test(item.id)) {
+          throw new Error(
+            `Invalid context id "${item.id}" — must match [a-zA-Z0-9_.-]+`,
+          );
+        }
+        await writeFile(join(ctxDir, `${item.id}.txt`), item.content, "utf8");
       }
-      await writeFile(join(ctxDir, `${item.id}.txt`), item.content, "utf8");
+      const sandbox = new BashSandbox(
+        workdir,
+        opts.contextItems,
+        opts.outputByteCap,
+        opts.timeoutMs,
+      );
+      await sandbox.boot();
+      return sandbox;
+    } catch (err) {
+      await rm(workdir, { recursive: true, force: true }).catch(() => {
+        /* ignore — the original error is what matters */
+      });
+      throw err;
     }
-    const sandbox = new BashSandbox(
-      workdir,
-      opts.contextItems,
-      opts.outputByteCap,
-      opts.timeoutMs,
-    );
-    await sandbox.boot();
-    return sandbox;
   }
 
   /** Human-readable catalog of context items for the root prompt. */
@@ -158,6 +167,20 @@ export class BashSandbox {
       ].join("\n") + "\n";
 
     await this.runRaw(bootstrap, /*isBootstrap*/ true);
+    // If bash failed to spawn or exited during bootstrap, surface it as a
+    // real error instead of returning a "live" sandbox that secretly dead-
+    // results every call. Callers should get ENOENT / permissions / etc.
+    // reflected at create-time, not three execute() calls later.
+    if (this.dead) {
+      try {
+        this.proc?.kill("SIGKILL");
+      } catch {
+        /* ignore */
+      }
+      throw new Error(
+        `BashSandbox boot failed: ${this.deadReason ?? "unknown reason"}`,
+      );
+    }
   }
 
   /**

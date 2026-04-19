@@ -159,6 +159,23 @@ describe("BashSandbox (persistent REPL)", () => {
     ).rejects.toThrow(/Invalid context id/);
   });
 
+  it("cleans up the temp workdir when setup fails", async () => {
+    // List rlm-* dirs before and after a failing create to verify cleanup.
+    const { readdir } = await import("node:fs/promises");
+    const os = await import("node:os");
+    const tmpRoot = os.tmpdir();
+    const before = (await readdir(tmpRoot)).filter((n) => n.startsWith("rlm-"));
+    await expect(
+      BashSandbox.create({
+        contextItems: [{ id: "../bad", content: "x" }],
+        outputByteCap: 1024,
+        timeoutMs: 1000,
+      }),
+    ).rejects.toThrow(/Invalid context id/);
+    const after = (await readdir(tmpRoot)).filter((n) => n.startsWith("rlm-"));
+    expect(after.length).toBe(before.length);
+  });
+
   it("redacts credential-ish env vars from bash env", async () => {
     const cases: Array<[string, string]> = [
       ["OPENAI_API_KEY", "sk-openai"],
