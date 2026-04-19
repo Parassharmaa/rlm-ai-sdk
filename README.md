@@ -162,22 +162,54 @@ Benchmarked with the same models as the [RLM paper](https://arxiv.org/abs/2512.2
 | OOLONG counting @ 131K (N=6) | 96K | 67% | 67% | — | RLM **4.6× cheaper** |
 | Synthetic pairs @ 45K (N=10) | 45K | 100% | 90–100% | 100% | RLM **14× cheaper** |
 | Synthetic pairs V3 NLP @ 8K (N=6) | 8.5K | **100%** | 67% | 67% | RLM ~2× cheaper |
+| OOLONG 32K w/ **gpt-5-mini** root (N=6) | 24K | 67% | 67% | **83%**‡ | RLM 2–3× cheaper |
+
+<sup>‡ First observed sub-call use: 1 call across 6 items. Still N=6 small-sample — the +1 item accuracy came from `sub=0` sampling variance on a different item, not from the sub-call. Noisy but directionally consistent.</sup>
 
 <sup>† With tuned root prompt. Untuned: 70%. RLM's 30 pp advantage at 32K collapses to a tie at 131K — gpt-5 handles long contexts better than the paper assumed.</sup>
 
-**Honest findings across six runs:**
+**Honest findings across seven benchmarks:**
 - **Cost is the stable RLM win.** 2×–93× cheaper depending on context size. Never underwater.
-- **Accuracy is task-dependent.** RLM wins on small-scale aggregation (OOLONG 32K), ties on most tasks, loses on small NLP-required tasks (pairs V3) where baseline can just read everything.
-- **Sub-calls never fire on our benchmarks** even when budgeted. GPT-5 prefers bash pattern-matching. The paper's sub-call win requires a task where per-item extraction truly can't be reduced to text processing *and* the context is too big for baseline — we haven't reproduced that combination. See [`bench/results.md`](./bench/results.md) for details.
+- **Accuracy is task-dependent.** RLM wins on small-scale aggregation (OOLONG 32K), ties on most tasks, loses on small NLP-required tasks where baseline can just read everything.
+- **Sub-calls fire very rarely** — 1 observed call in ~96 RLM runs across our suite. GPT-5 prefers bash pattern-matching over delegation. The paper's sub-call win requires a task where per-item extraction can't reduce to text processing *and* context is too big for baseline — we haven't cleanly reproduced that combination.
 
 Full per-item results, methodology, and caveats: [`bench/results.md`](./bench/results.md).
 
+## When to use RLM (prescriptive, from our benchmarks)
+
+**Reach for `runRLM` / the middleware when any of these hold:**
+
+1. **Your context routinely exceeds the model's window, or is close to the cost limit.** This is the 93× cost win at 256K. If your prompts are ≤20K tokens, vanilla `generateText` is usually fine.
+2. **You're doing aggregation over many items** (counting, grouping, statistics over a long list of small records). OOLONG 32K showed +30 pp accuracy for RLM over baseline GPT-5 in exactly this regime.
+3. **You want predictable cost regardless of context size.** RLM's cost scales with how much the *root LM* reads, not with total context — so a 1 MB document costs roughly the same as a 32K one if both tasks involve grepping a section.
+
+**Don't reach for RLM when:**
+
+1. **The whole context fits comfortably in the window AND doesn't need aggregation.** GPT-5 at <100K tokens is accurate enough that RLM's grep-based exploration is pure overhead in latency (+5–10s per call).
+2. **Per-item reasoning is shallow.** If your task is "extract the one fact from a long doc," baseline does it faster and as accurately.
+3. **You need streamed, token-by-token output.** RLM's `streamText` path emits one synthetic chunk with the final answer — not real streaming.
+
+**Config guidance (based on measured behaviour):**
+
+- `maxDepth: 0` (default). Our benchmarks showed sub-calls fire rarely and add wall-time when they do. Leave this unless you're *certain* the task has per-item NLP extraction over hundreds of items.
+- `maxSubCalls: 0–10`. Gives the model a ceiling without encouraging it; the root prompt already biases against over-delegation.
+- `maxSteps: 30–40`. Our runs converge in 5–20 steps for successful cases; failures tend to be step-budget exhaustion, which happens around step 25+.
+- `bashOutputByteCap`: the default 8 KB is enough for most `head`/`grep -n` output. Increase if you see `TRUNCATED` in traces.
+- **`subModel`: set to a cheaper model than `model`.** Matches the paper's GPT-5 + GPT-5-mini pairing; keeps sub-call cost low on the rare occasions they fire.
+
+## Reproducing the benchmarks
+
 ```bash
-# Reproduce (~$3 total, ~20 min)
-bash bench/download-data.sh    # fetch LongBench-v2 from HF
-pnpm tsx bench/run-niah.ts     # S-NIAH sweep
-pnpm tsx bench/run-codeqa.ts   # CodeQA subset
-pnpm tsx bench/summarize.ts    # aggregate
+# Total ~$20 for the full suite with gpt-5 / gpt-5-mini (2+ hours)
+bash bench/download-data.sh              # fetch LongBench-v2 from HF (~465 MB)
+pnpm tsx bench/run-niah.ts               # S-NIAH sweep      (~$1.50, 5 min)
+pnpm tsx bench/run-codeqa.ts             # CodeQA N=15       (~$2.00, 20 min)
+pnpm tsx bench/run-oolong.ts             # OOLONG 32K 3-cond (~$4.00, 90 min)
+pnpm tsx bench/run-oolong-131k.ts        # OOLONG 131K       (~$1.50, 15 min)
+pnpm tsx bench/run-pairs.ts              # synthetic pairs   (~$1.60, 15 min)
+pnpm tsx bench/run-pairs-v3.ts           # pairs NLP variant (~$0.85, 15 min)
+pnpm tsx bench/run-oolong-mini-root.ts   # mini as root      (~$0.20, 15 min)
+pnpm tsx bench/summarize.ts              # aggregate all JSONL → markdown
 ```
 
 ## Limitations
