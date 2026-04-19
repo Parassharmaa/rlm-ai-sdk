@@ -16,7 +16,7 @@ async function main() {
     process.exit(1);
   }
 
-  const underlying = openai("gpt-4o-mini");
+  const underlying = openai("gpt-5-mini");
   const wrapped = wrapLanguageModel({
     model: underlying,
     middleware: createRLMMiddleware({

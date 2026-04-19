@@ -43,7 +43,7 @@ const DEFAULT_THRESHOLD_TOKENS = 32_000;
  *   import { createRLMMiddleware } from "rlm-ai-sdk";
  *
  *   const model = wrapLanguageModel({
- *     model: openai("gpt-4o-mini"),
+ *     model: openai("gpt-5-mini"),
  *     middleware: createRLMMiddleware({ thresholdTokens: 20_000 }),
  *   });
  */

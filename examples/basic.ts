@@ -37,7 +37,7 @@ async function main() {
     `Context: ${context.length} chunks, ${totalChars.toLocaleString()} chars.`,
   );
 
-  const model = openai("gpt-4o-mini");
+  const model = openai("gpt-5-mini");
   const result = await runRLM(
     {
       model,

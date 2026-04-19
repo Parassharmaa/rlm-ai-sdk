@@ -25,7 +25,7 @@ function buildHaystack(): string[] {
 describe.skipIf(!HAS_KEY)("e2e: needle-in-haystack with real OpenAI", () => {
   it("finds the needle via RLM across ~100k chars of haystack", async () => {
     const result = await runRLM(
-      { model: openai("gpt-4o-mini"), maxSteps: 30, maxSubCalls: 10 },
+      { model: openai("gpt-5-mini"), maxSteps: 30, maxSubCalls: 10 },
       {
         query:
           "Who is the CEO of Acme Corp? Respond with just the person's name.",

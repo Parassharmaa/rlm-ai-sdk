@@ -16,7 +16,7 @@ async function main() {
     process.exit(1);
   }
 
-  const model = openai("gpt-4o-mini");
+  const model = openai("gpt-5-mini");
 
   const bigDocument = Array.from({ length: 800 }, (_, i) => {
     if (i === 537)

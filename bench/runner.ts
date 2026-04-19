@@ -20,7 +20,6 @@ export const PRICES: Record<string, Pricing> = {
   // OpenAI list prices as of 2026-04. If GPT-5 pricing changes, override via env.
   "gpt-5": { inputPerM: 1.25, outputPerM: 10.0 },
   "gpt-5-mini": { inputPerM: 0.25, outputPerM: 2.0 },
-  "gpt-4o-mini": { inputPerM: 0.15, outputPerM: 0.6 },
 };
 
 export interface RunConfig {

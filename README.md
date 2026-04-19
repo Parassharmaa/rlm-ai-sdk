@@ -34,7 +34,7 @@ import { openai } from "@ai-sdk/openai";
 import { runRLM } from "rlm-ai-sdk";
 
 const result = await runRLM(
-  { model: openai("gpt-4o-mini") },
+  { model: openai("gpt-5-mini") },
   {
     query: "Who is the CEO of Acme Corp?",
     context: hugeChunksArray,   // string | string[] | ContextItem[]
@@ -53,7 +53,7 @@ import { openai } from "@ai-sdk/openai";
 import { createRLMMiddleware } from "rlm-ai-sdk";
 
 const model = wrapLanguageModel({
-  model: openai("gpt-4o-mini"),
+  model: openai("gpt-5-mini"),
   middleware: createRLMMiddleware({ thresholdTokens: 20_000 }),
 });
 
@@ -68,7 +68,7 @@ import { generateText, stepCountIs } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { rlmTool } from "rlm-ai-sdk";
 
-const model = openai("gpt-4o-mini");
+const model = openai("gpt-5-mini");
 const result = await generateText({
   model,
   prompt: "Find the launch code in this log: ...",
