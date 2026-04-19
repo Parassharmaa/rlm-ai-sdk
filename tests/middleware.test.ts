@@ -45,6 +45,21 @@ describe("createRLMMiddleware", () => {
     ).toBeDefined();
   });
 
+  it("passes through streamText unchanged for small prompts", async () => {
+    const underlying = makeScriptedModel([{ text: "streamed-passthrough" }]);
+    const wrapped = wrapLanguageModel({
+      model: underlying,
+      middleware: createRLMMiddleware({ thresholdTokens: 1_000_000 }),
+    });
+    const stream = streamText({
+      model: wrapped,
+      prompt: "short prompt",
+    });
+    let accumulated = "";
+    for await (const delta of stream.textStream) accumulated += delta;
+    expect(accumulated).toBe("streamed-passthrough");
+  });
+
   it("streams diverted responses as a synthetic text stream", async () => {
     const rootModel = makeScriptedModel([
       { toolCalls: [{ toolName: "final", input: { answer: "streamed-answer" } }] },

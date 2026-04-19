@@ -27,7 +27,43 @@ export type ScriptedStep =
 
 export function makeScriptedModel(script: ScriptedStep[]): MockModel {
   let step = 0;
+  let streamStep = 0;
   return new MockLanguageModelV3({
+    // doStream for tests that exercise streamText against this model.
+    // Emits the current scripted step as text-start / text-delta / text-end
+    // / finish. Tool calls aren't streamed here — this is for pass-through
+    // streaming tests where the scripted step is plain text.
+    doStream: async () => {
+      const current = script[streamStep] ?? { text: "" };
+      streamStep++;
+      const textContent =
+        "text" in current && current.text ? current.text : "";
+      const id = `stream_${streamStep}`;
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue({ type: "text-start", id });
+          if (textContent) {
+            controller.enqueue({ type: "text-delta", id, delta: textContent });
+          }
+          controller.enqueue({ type: "text-end", id });
+          controller.enqueue({
+            type: "finish",
+            finishReason: { unified: "stop", raw: undefined },
+            usage: {
+              inputTokens: {
+                total: 0,
+                noCache: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+              },
+              outputTokens: { total: 0, text: 0, reasoning: 0 },
+            },
+          });
+          controller.close();
+        },
+      });
+      return { stream };
+    },
     doGenerate: async () => {
       const current = script[step] ?? { text: "" };
       step++;
