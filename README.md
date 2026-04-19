@@ -1,5 +1,8 @@
 # rlm-ai-sdk
 
+[![CI](https://github.com/Parassharmaa/rlm-ai-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/Parassharmaa/rlm-ai-sdk/actions/workflows/ci.yml)
+[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+
 **Recursive Language Models (RLM) for the Vercel AI SDK.**
 
 Give any AI SDK language model a bash-sandboxed REPL and a recursive `llm` call so it can programmatically explore contexts that are orders of magnitude larger than its attention window.
