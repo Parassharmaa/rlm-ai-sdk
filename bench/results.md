@@ -153,6 +153,22 @@ We tried to force the sub-call path by rewriting the user profiles as free-form 
 | Baseline | 44% | 60% | 67% |
 | RLM | 56.5% | **90%** (bash only) / 80% (w/ sub) | 67% |
 
+## 5. Weaker root (gpt-5-mini) on OOLONG 32K, N=6
+
+We swapped the root model to **gpt-5-mini** (still with gpt-5-mini as sub) to test whether a less-capable root actually exercises sub-calls. Same items as the main OOLONG 32K run.
+
+| Condition | Accuracy | Total cost | Sub-calls used |
+|---|---|---|---|
+| Baseline (gpt-5-mini direct) | 4/6 (67%) | $0.10 | n/a |
+| RLM no-sub | 4/6 (67%) | $0.04 | 0 |
+| RLM with-sub budget (10) | 5/6 (83%) | $0.04 | **1** (item 035) |
+
+**Significance:** this is **the first observed sub-call use across ~90 RLM runs** in our entire benchmark suite. A single call in a single item — still a N=1 effect — but it proves the recursion code path works end-to-end with real models, not just in unit tests.
+
+**Why did it still mostly not fire?** Even at gpt-5-mini, the root handles bash-grep-and-count well enough on 80-item counting that sub-calls don't seem to help. The +1 item accuracy gain between `with-sub` and `no-sub` (item 017) actually flipped at `sub=0` — just sampling variance. At N=6 this is noise.
+
+**Reproducing:** `pnpm tsx bench/run-oolong-mini-root.ts`. ~$0.20, ~15 min.
+
 ## How the recursion is actually implemented
 
 - **Default `maxDepth=0`:** every `llm(query, context)` call is a plain `generateText` leaf. Matches the paper's `llm_query` semantics for summarisation / extraction.
