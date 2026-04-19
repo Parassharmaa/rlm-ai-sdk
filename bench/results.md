@@ -120,6 +120,32 @@ To test if the sub-call path genuinely helps on a quadratic task, we constructed
 
 **What this means for the sub-call path.** We have not yet found a task in our suite where sub-calls genuinely help. The paper's OOLONG-Pairs (sub-calls +14 pp) requires an attribute-extraction step that can't be reduced to text processing — our synthetic task is too regular. A V3 pairs task with attributes embedded in natural-language paragraphs (only NLP can extract "prefers umami" from a cooking anecdote) would likely force sub-call use.
 
+### Pairs V3 — NLP-embedded attributes (N=6)
+
+We tried to force the sub-call path by rewriting the user profiles as free-form paragraphs, with favorite and least-favorite expressed only through narrative ("the one thing that got them through recovery was..." vs "has a story about X from a bad family reunion..."). No explicit labels, and foods are also mentioned neutrally in filler sentences.
+
+| Condition | Accuracy | Total cost | Sub-calls used |
+|---|---|---|---|
+| Baseline (gpt-5 direct) | **6/6** (100%) | $0.44 | n/a |
+| RLM no-sub | 4/6 (67%) | $0.20 | 0 |
+| RLM with-sub budget | 4/6 (67%) | $0.21 | **0** (model still declined) |
+
+**First bench where baseline beats RLM on accuracy.** Why:
+- At 8.5K tokens, baseline reads the whole thing in one shot and classifies each profile confidently.
+- RLM's bash approach writes grep patterns like `grep -E "won't even walk|can't stand|revolting"` to find least-fav mentions. Only 5 templates exist per sentiment class, so patterns CAN cover them — but the model's first attempts miss edge cases, eat step budget, and it hits the cap.
+- Sub-calls would have been the clean solution (one call per profile to extract attributes). The model never tried.
+
+**Cost is still ~2× cheaper for RLM** but the accuracy gap means this isn't a win at N=6.
+
+**Why doesn't with-sub use sub-calls?** The v2 prompt tells the model `llm` is for when "you can't classify yourself in a few dozen items." With 40 users the root LM judges itself capable, ignores the budget, and solves with bash. This is the tuning working as intended for simple tasks — but on this harder variant it underestimates the difficulty.
+
+**Possible fixes (untried):**
+- Lower the "skip if < N users" threshold in the prompt.
+- Add a prompt hint: "for per-item NLP classification over 20+ items, sub-calls are usually cheaper than trying to grep the patterns."
+- Make the templates even more varied so grep patterns fail — but this is arms-racing against GPT-5's pattern-matching which is very good.
+
+**What we'd really need to see sub-calls win**: a task where per-item extraction genuinely can't be done without an LLM (e.g. sentiment from a paragraph with no sentiment words), repeated across hundreds of items, with aggregation over the extracted values.
+
 ### Comparison to paper's OOLONG
 
 | | Paper (OOLONG, 131K) | Ours (32K) | Ours (131K) |
