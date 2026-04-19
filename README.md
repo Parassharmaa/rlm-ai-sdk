@@ -163,15 +163,17 @@ Benchmarked with the same models as the [RLM paper](https://arxiv.org/abs/2512.2
 | Synthetic pairs @ 45K (N=10) | 45K | 100% | 90–100% | 100% | RLM **14× cheaper** |
 | Synthetic pairs V3 NLP @ 8K (N=6) | 8.5K | **100%** | 67% | 67% | RLM ~2× cheaper |
 | OOLONG 32K w/ **gpt-5-mini** root (N=6) | 24K | 67% | 67% | **83%**‡ | RLM 2–3× cheaper |
+| **CodeQA LARGE** (136K–483K, N=10) | up to 483K | **30%** | **90%** | — | **+60 pp RLM**, 5× cheaper |
 
 <sup>‡ First observed sub-call use: 1 call across 6 items. Still N=6 small-sample — the +1 item accuracy came from `sub=0` sampling variance on a different item, not from the sub-call. Noisy but directionally consistent.</sup>
 
 <sup>† With tuned root prompt. Untuned: 70%. RLM's 30 pp advantage at 32K collapses to a tie at 131K — gpt-5 handles long contexts better than the paper assumed.</sup>
 
-**Honest findings across seven benchmarks:**
+**Honest findings across eight benchmarks:**
 - **Cost is the stable RLM win.** 2×–93× cheaper depending on context size. Never underwater.
-- **Accuracy is task-dependent.** RLM wins on small-scale aggregation (OOLONG 32K), ties on most tasks, loses on small NLP-required tasks where baseline can just read everything.
-- **Sub-calls fire very rarely** — 1 observed call in ~96 RLM runs across our suite. GPT-5 prefers bash pattern-matching over delegation. The paper's sub-call win requires a task where per-item extraction can't reduce to text processing *and* context is too big for baseline — we haven't cleanly reproduced that combination.
+- **RLM wins accuracy decisively when context overflows the model's window** (CodeQA LARGE, N=10: 30% → 90%, +60 pp). This reproduces the paper's central claim for LongBench-v2 CodeQA.
+- **Accuracy ties or slightly loses on tasks that fit the window** — once baseline can read everything, RLM's grep-based exploration is roughly equivalent.
+- **Sub-calls fire very rarely** — 1 observed call in ~100+ RLM runs across our suite. GPT-5 prefers bash pattern-matching over delegation. The paper's sub-call win requires a task where per-item extraction can't reduce to text processing *and* context is too big for baseline — we haven't cleanly reproduced that combination.
 
 Full per-item results, methodology, and caveats: [`bench/results.md`](./bench/results.md).
 

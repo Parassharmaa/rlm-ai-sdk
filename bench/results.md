@@ -24,6 +24,41 @@ N=3 samples per length, synthetic lorem-ipsum filler with one `"The magic number
 
 **Takeaway:** GPT-5 solves NIAH regardless of length — accuracy is not the differentiator. But baseline cost scales linearly with context while RLM stays flat (the haystack lives on disk; only metadata enters the prompt). **93× cost gap at 256K.**
 
+## 2a. LongBench-v2 CodeQA, LARGE items (136K–483K tokens, N=10)
+
+The scenario the paper emphasises: items where baseline hits context overflow.
+We picked 10 code-repo QA items in the 136K–483K token range. GPT-5's
+actual input window sits around 272K (smaller than the 400K we'd assumed),
+so items above that overflow at the API.
+
+| Condition | Accuracy | Total cost | Notes |
+|---|---|---|---|
+| Baseline (gpt-5 direct) | **3/10 (30%)** | $1.03 | 3 PASS, 1 wrong-answer, 6 `context_overflow` |
+| RLM no-sub | **9/10 (90%)** | $0.19 | Handled all 10; 1 wrong-answer |
+
+**+60 pp accuracy gap. RLM 5× cheaper.** This is the largest accuracy delta
+in the entire suite and reproduces the paper's central CodeQA claim —
+24% → 62% (+38 pp) on the full benchmark — directionally and at comparable
+magnitude. The gap comes almost entirely from the six items where baseline
+physically cannot run.
+
+Per-item:
+
+| Item | Tokens | Base | RLM | Notes |
+|---|---|---|---|---|
+| 66ece545 | 136K | ✅ | ✅ | both succeed |
+| 66f2e874 | 154K | ✅ | ✅ |   |
+| 66fa7269 | 159K | ✅ | ✅ |   |
+| 66fa788a | 229K | ❌ | ❌ | both wrong |
+| 66f51ab2 | 295K | 🔴 overflow | ✅ | baseline API-refused |
+| 66fa542b | 310K | 🔴 overflow | ✅ |   |
+| 66f1dac1 | 400K | ⏭️ skip | ✅ | predicted overflow |
+| 66f908e3 | 428K | ⏭️ skip | ✅ |   |
+| 66ed5be2 | 456K | ⏭️ skip | ✅ |   |
+| 66fa208b | 483K | ⏭️ skip | ✅ |   |
+
+**Reproducing:** `pnpm tsx bench/run-codeqa-large.ts`. ~$1.20, ~10 min.
+
 ## 2. LongBench-v2 CodeQA
 
 Dataset: [zai-org/LongBench-v2](https://huggingface.co/datasets/zai-org/LongBench-v2). Items from `Code Repository Understanding` ≤128K tokens. 4-way multiple choice.
