@@ -104,6 +104,22 @@ We re-ran baseline vs RLM no-sub at ctx_len=131072 (actual chars/4 ≈ 96K token
 
 **Cost story holds** at 4.6× RLM cheaper: baseline averages $0.16/item at 131K, RLM $0.03.
 
+## 4. Synthetic pairs (quadratic aggregation)
+
+To test if the sub-call path genuinely helps on a quadratic task, we constructed our own: `bench/pairs.ts` generates 100-user profiles with structured attributes (`Favorite food: X. Least favorite food: Y.`) plus filler. Answer is the count of ordered pairs where A's favorite = B's least-favorite (\~490 pairs out of 9900 possible, ~5% density). 45K tokens per item, N=10.
+
+| Condition | Accuracy | Total cost | Sub-calls used |
+|---|---|---|---|
+| Baseline (gpt-5 direct) | 10/10 (100%) | $1.40 | n/a |
+| RLM no-sub | 9/10 (90%) | $0.11 | 0 |
+| RLM with-sub budget | 10/10 (100%) | $0.10 | **0** (model declined) |
+
+**Finding #1 — cost wins at 14×.** RLM costs $0.011/item vs baseline's $0.14/item at 45K tokens. At scale this is the clearest RLM advantage.
+
+**Finding #2 — sub-calls never fired, even when budgeted.** With `maxSubCalls=20` available, the root LM *chose* to solve every item with bash alone. Why? The task's attribute structure (`Favorite food: X.`) is fully text-processable — GPT-5 correctly recognised that `awk`/`grep` can extract and count exactly, and no semantic reasoning was needed per-user. **This validates the new root prompt's "when NOT to call llm" rule** (commit e24a529): the model now actively avoids over-delegating.
+
+**What this means for the sub-call path.** We have not yet found a task in our suite where sub-calls genuinely help. The paper's OOLONG-Pairs (sub-calls +14 pp) requires an attribute-extraction step that can't be reduced to text processing — our synthetic task is too regular. A V3 pairs task with attributes embedded in natural-language paragraphs (only NLP can extract "prefers umami" from a cooking anecdote) would likely force sub-call use.
+
 ### Comparison to paper's OOLONG
 
 | | Paper (OOLONG, 131K) | Ours (32K) | Ours (131K) |

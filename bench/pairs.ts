@@ -71,11 +71,14 @@ export interface PairsItem {
   answer: number;
 }
 
-/** Generate a deterministic pairs item. */
+/** Generate a deterministic pairs item.
+ *  Defaults: 100 users × ~40 filler sentences → ~40K tokens context, 9,900
+ *  ordered pairs to check. Previously 40/20 was trivially solved by GPT-5
+ *  — this scale actually stresses the model. */
 export function generatePairsItem(
   seed: number,
-  numUsers = 40,
-  fillerSentencesPerUser = 20,
+  numUsers = 100,
+  fillerSentencesPerUser = 40,
 ): PairsItem {
   const rng = prng(seed);
   const pick = <T>(arr: T[]): T => arr[Math.floor(rng() * arr.length)]!;
