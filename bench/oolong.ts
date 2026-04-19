@@ -24,16 +24,19 @@ export interface OolongItem {
   answer: string[];
 }
 
-const CACHE_PATH = join("bench", "data", "oolong-count-32k.json");
+const cachePath = (ctxLen: number) =>
+  join("bench", "data", `oolong-count-${Math.round(ctxLen / 1024)}k.json`);
 
 /**
- * Fetch N counting@32K items from the HF datasets-server REST API.
- * Cached to disk so subsequent runs are offline.
+ * Fetch N counting items at a given context length (e.g. 32768 or 131072)
+ * from the HF datasets-server REST API. Cached to disk per context size.
  */
-export async function fetchOolongCount32K(options: {
+export async function fetchOolongCounting(options: {
   n: number;
+  contextLen: number;
   offset?: number;
 }): Promise<OolongItem[]> {
+  const CACHE_PATH = cachePath(options.contextLen);
   if (existsSync(CACHE_PATH)) {
     const cached = JSON.parse(readFileSync(CACHE_PATH, "utf8")) as OolongItem[];
     if (cached.length >= options.n) {
@@ -81,7 +84,7 @@ export async function fetchOolongCount32K(options: {
         // no task_group filter available; filter on task prefix and ctx_len
       }
       if (
-        r.row.context_len === 32768 &&
+        r.row.context_len === options.contextLen &&
         (r.row.task === "TASK_TYPE.MOST_FREQ" ||
           r.row.task === "TASK_TYPE.LEAST_FREQ")
       ) {
@@ -110,6 +113,19 @@ export async function fetchOolongCount32K(options: {
   writeFileSync(CACHE_PATH, JSON.stringify(collected, null, 2));
   const start = options.offset ?? 0;
   return collected.slice(start, start + options.n);
+}
+
+/** @deprecated use fetchOolongCounting({ contextLen: 32768, ... }) */
+export async function fetchOolongCount32K(options: {
+  n: number;
+  offset?: number;
+}): Promise<OolongItem[]> {
+  const opts: Parameters<typeof fetchOolongCounting>[0] = {
+    n: options.n,
+    contextLen: 32768,
+  };
+  if (options.offset !== undefined) opts.offset = options.offset;
+  return fetchOolongCounting(opts);
 }
 
 export function buildPrompt(item: OolongItem): {
@@ -191,8 +207,9 @@ function parsePyList(s: string): string[] {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const items = await fetchOolongCount32K({ n: 15 });
-  console.log(`cached ${items.length} items`);
+  const ctxLen = Number(process.argv[2] ?? 32768);
+  const items = await fetchOolongCounting({ n: 15, contextLen: ctxLen });
+  console.log(`cached ${items.length} items at ctxLen=${ctxLen}`);
   for (const it of items) {
     console.log(
       `  ${it.id} task=${it.task} ctx=${it.context_len} labels=${it.num_labels} A=${JSON.stringify(it.answer)}`,
