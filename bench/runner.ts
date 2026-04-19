@@ -27,13 +27,14 @@ export interface RunConfig {
   subModelId: string;
   maxSteps: number;
   maxSubCalls: number;
+  maxDepth?: number;
   outFile: string;
   // If baseline context exceeds this, skip baseline and mark as "context_overflow".
   baselineContextLimitTokens: number;
 }
 
 export interface RunRecord {
-  suite: "niah" | "codeqa";
+  suite: "niah" | "codeqa" | "oolong";
   itemId: string;
   condition: "baseline" | "rlm";
   contextTokens: number;
@@ -127,6 +128,7 @@ export async function runRLMCondition(
         subModel: openai(cfg.subModelId as never) as LanguageModel,
         maxSteps: cfg.maxSteps,
         maxSubCalls: cfg.maxSubCalls,
+        ...(cfg.maxDepth !== undefined ? { maxDepth: cfg.maxDepth } : {}),
       },
       { query, context, signal },
     );

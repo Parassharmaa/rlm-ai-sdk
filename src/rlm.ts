@@ -19,7 +19,7 @@ const DEFAULTS = {
   maxSteps: 40,
   subMaxSteps: 20,
   maxSubCalls: 20,
-  maxDepth: 1,
+  maxDepth: 0,
   bashTimeoutMs: 20_000,
   bashOutputByteCap: 8_192,
   subPromptCharCap: 400_000,

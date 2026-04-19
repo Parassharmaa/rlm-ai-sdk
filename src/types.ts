@@ -119,12 +119,14 @@ export interface RLMEngineConfig {
    */
   maxSubCalls?: number;
   /**
-   * Max recursion depth for the `llm` tool. `maxDepth=0` forces every
-   * `llm` call to be a leaf (plain generateText, no inner sandbox) —
-   * equivalent to the paper's "RLM w/o sub-calls" ablation.
-   * `maxDepth=1` (default) lets the root LM spawn sub-RLMs that themselves
-   * use bash, but those sub-RLMs cannot recurse further.
-   * `maxDepth=2+` enables multi-layer aggregation.
+   * Max recursion depth for the `llm` tool.
+   * - `maxDepth=0` (default): every `llm(query, context)` call is a leaf —
+   *   a plain generateText with no inner bash sandbox. This matches the
+   *   paper's `llm_query` semantics for typical summarisation/extraction.
+   * - `maxDepth=1`: sub-calls are themselves RLMs with their own bash
+   *   sandbox, and can partition/grep within their slice.
+   * - `maxDepth=2+`: multi-layer recursion (expensive — each level spawns
+   *   its own sandbox and burns steps).
    */
   maxDepth?: number;
   /** Per-bash-command timeout in ms. Default: 20_000. */
