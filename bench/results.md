@@ -89,14 +89,27 @@ Effect: **+10 pp accuracy, −14% cost, −43% wall time** vs v1 prompt. The mod
 
 **Takeaway.** On this task, **bash-only RLM beats baseline by 30 pp** — the structured decomposition (peek → partition → classify in chunks → aggregate) helps more than flat reading. Adding sub-calls **hurts**: when the root LM delegates classification to sub-LMs, small inconsistencies accumulate, the root spends many steps reconciling, and sometimes runs out of steps without finalising. Sub-calls should help only on truly quadratic tasks (OOLONG-Pairs) or large-scale summarisation. The paper reports exactly this distinction — 58% full RLM vs 43.9% no-sub on OOLONG-Pairs — but for simple counting, bash alone wins.
 
+### Scaling OOLONG to 131K (paper's scale)
+
+We re-ran baseline vs RLM no-sub at ctx_len=131072 (actual chars/4 ≈ 96K tokens), N=6.
+
+| Scale (nominal ctx_len) | Baseline | RLM no-sub | RLM cost vs base |
+|---|---|---|---|
+| 32K (96K chars) | 60% (6/10) | **90%** (9/10) | 3.2× cheaper |
+| 131K (384K chars) | 67% (4/6) | 67% (4/6) | 4.6× cheaper |
+
+**Unexpected finding.** The paper showed RLM's advantage growing with context length on OOLONG (44% → 56.5% baseline → RLM at 131K). On our GPT-5 subset we see the *opposite*: a 30 pp RLM win at 32K collapses to a tie at 131K. Two plausible explanations:
+- **GPT-5's long-context reasoning is more robust than the paper's evaluation assumed** — at 96K actual tokens, baseline still handles 80-item counting. Paper's 44% baseline at "131K" may have been a different tokenisation or a harder item distribution.
+- **Sample size.** N=6 at 96K is tiny; a ±1 item flip = ±17 pp. Real confidence intervals overlap heavily with the 32K result.
+
+**Cost story holds** at 4.6× RLM cheaper: baseline averages $0.16/item at 131K, RLM $0.03.
+
 ### Comparison to paper's OOLONG
 
-| | Paper (OOLONG, 131K) | Ours (counting, 32K) |
-|---|---|---|
-| Baseline | 44% | 60% |
-| RLM (with sub-calls) | 56.5% | 70% |
-
-Paper's pattern (RLM > baseline) reproduces. Absolute numbers differ — we tested a smaller variant on a simpler task type, with fewer items, so confidence intervals are wide.
+| | Paper (OOLONG, 131K) | Ours (32K) | Ours (131K) |
+|---|---|---|---|
+| Baseline | 44% | 60% | 67% |
+| RLM | 56.5% | **90%** (bash only) / 80% (w/ sub) | 67% |
 
 ## How the recursion is actually implemented
 

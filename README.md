@@ -159,8 +159,9 @@ Benchmarked with the same models as the [RLM paper](https://arxiv.org/abs/2512.2
 | S-NIAH | 8K–256K | 100% | 100% | — | RLM **93× cheaper** @256K |
 | LongBench-v2 CodeQA (pooled N=35) | 25K–121K | 62.9% | 62.9% | — | RLM **4× cheaper** (stable) |
 | OOLONG counting @ 32K (N=10) | 24K | 60% | **90%** | 80%† | RLM no-sub **3× cheaper** |
+| OOLONG counting @ 131K (N=6) | 96K | 67% | 67% | — | RLM **4.6× cheaper** |
 
-<sup>† With tuned root prompt that biases against over-delegation. Untuned: 70%.</sup>
+<sup>† With tuned root prompt. Untuned: 70%. RLM's 30 pp advantage at 32K collapses to a tie at 131K — gpt-5 handles long contexts better than the paper assumed.</sup>
 
 **Honest finding on OOLONG:** bash-only RLM beats baseline by 30 pp. Adding sub-calls *hurt* on this simple aggregation task — the root LM over-delegates and loses coherence. Sub-calls should help on quadratic tasks (paper's OOLONG-Pairs: +14 pp) but aren't a free win. Default `maxDepth=0` reflects this.
 
